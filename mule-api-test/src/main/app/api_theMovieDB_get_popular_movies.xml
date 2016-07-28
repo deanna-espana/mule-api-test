@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:scripting="http://www.mulesoft.org/schema/mule/scripting" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:metadata="http://www.mulesoft.org/schema/mule/metadata" xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:file="http://www.mulesoft.org/schema/mule/file" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+    xmlns:spring="http://www.springframework.org/schema/beans" 
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
+http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
+http://www.mulesoft.org/schema/mule/scripting http://www.mulesoft.org/schema/mule/scripting/current/mule-scripting.xsd">
+    <http:listener-config name="HTTP_Listener_Configuration" host="localhost" port="8081" doc:name="HTTP Listener Configuration">
+        <http:worker-threading-profile poolExhaustedAction="WAIT"/>
+    </http:listener-config>
+    <http:request-config name="HTTP_Request_Last_FM_API" host="ws.audioscrobbler.com" port="80" basePath="2.0" doc:name="HTTP Request Configuration"/>
+    <http:request-config name="HTTP_Request_API_Layer" host="apilayer.net" port="80" basePath="/api" doc:name="HTTP Request Configuration"/>
+    <http:request-config name="HTTP_Request_TheMovieDB_API" host="api.themoviedb.org" port="80" basePath="3/movie/popular" doc:name="HTTP Request Configuration"/>
+    <flow name="themoviedb-api-Flow">
+        <http:listener config-ref="HTTP_Listener_Configuration" path="/themoviedb-api" doc:name="HTTP"/>
+        <logger message="==== START: The Movie DB API  ====" level="INFO" doc:name="START"/>
+        <http:request config-ref="HTTP_Request_TheMovieDB_API" path="/" method="GET" doc:name="Request - Popular Movies">
+            <http:request-builder>
+                <http:query-param paramName="api_key" value="${themoviedb.api.key}"/>
+            </http:request-builder>
+        </http:request>
+        <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="Response to Object"/>
+        <json:object-to-json-transformer doc:name="Object to JSON"/>
+        <set-payload value="#[json:results]" doc:name="Sets movie details"/>
+        <dw:transform-message metadata:id="0d109001-891a-41ed-8858-25304d6ded01" doc:name="Returns movie specific fields">
+            <dw:input-payload doc:sample="list_json.json" mimeType="application/json"/>
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+payload map {
+	title: $.title,
+	original_language: $.original_language,
+	release_date: $.release_date,
+	poster_path: $.poster_path
+}]]></dw:set-payload>
+        </dw:transform-message>
+        <dw:transform-message doc:name="Returns ten popular movies">
+            <dw:input-payload doc:sample="list_string.dwl"/>
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+most_popular_movies: payload[0..9]]]></dw:set-payload>
+        </dw:transform-message>
+
+        <logger message="==== END: The Movie DB API  ====" level="INFO" doc:name="END"/>
+        <exception-strategy ref="apiCatch_Exception_Strategy" doc:name="Reference Exception Strategy"/>
+    </flow>
+
+</mule>

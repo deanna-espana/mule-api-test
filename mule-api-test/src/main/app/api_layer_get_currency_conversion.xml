@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd">
+    <flow name="apilayer-Flow">
+        <http:listener config-ref="HTTP_Listener_Configuration" path="/apilayer" doc:name="HTTP"/>
+        <logger message="==== START: Coin API ====" level="INFO" doc:name="START"/>
+        <set-variable variableName="startDate" value="#[message.inboundProperties.'http.query.params'.start_date]" doc:name="Gets start_date param"/>
+        <set-variable variableName="endDate" value="#[message.inboundProperties.'http.query.params'.end_date]" doc:name="Gets end_date param"/>
+        <enricher target="#[flowVars.startDateResponse]" doc:name="Message Enricher">
+            <http:request config-ref="HTTP_Request_API_Layer" path="/historical" method="GET" metadata:id="92056570-2df2-4f67-ad94-2a805d5fd795" doc:name="Gets start date">
+                <http:request-builder>
+                    <http:query-param paramName="access_key" value="${apilayer.access.key}"/>
+                    <http:query-param paramName="date" value="#[flowVars.startDate]"/>
+                </http:request-builder>
+            </http:request>
+        </enricher>
+        <enricher target="#[flowVars.endDateResponse]" doc:name="Message Enricher">
+            <http:request config-ref="HTTP_Request_API_Layer" path="/historical" method="GET" metadata:id="54062ec8-89e4-467d-bf9e-ab639c90d42e" doc:name="Gets end date">
+                <http:request-builder>
+                    <http:query-param paramName="access_key" value="${apilayer.access.key}"/>
+                    <http:query-param paramName="date" value="#[flowVars.endDate]"/>
+                </http:request-builder>
+            </http:request>
+        </enricher>
+        <dw:transform-message metadata:id="b961d8e5-d200-4085-b484-a325a5e380d7" doc:name="Calculates Variation">
+            <dw:input-variable doc:sample="json.json" variableName="endDateResponse"/>
+            <dw:input-variable doc:sample="json_1.json" variableName="startDateResponse"/>
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+%var quoteStartUSDEUR=flowVars.startDateResponse.quotes.USDEUR
+%var quoteEndUSDEUR=flowVars.endDateResponse.quotes.USDEUR
+%var diffValues = quoteEndUSDEUR - quoteStartUSDEUR
+%var variationResult = ((diffValues/quoteStartUSDEUR) * 100)[0..5]
+---
+{
+  start_rate:quoteStartUSDEUR,
+  end_rate:quoteEndUSDEUR,
+  variation: variationResult
+}]]></dw:set-payload>
+        </dw:transform-message>
+        <logger message="==== END: Coin API ====" level="INFO" doc:name="END"/>
+        <exception-strategy ref="apiCatch_Exception_Strategy" doc:name="Reference Exception Strategy"/>
+    </flow>
+</mule>
